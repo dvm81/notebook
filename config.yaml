@@ -1,0 +1,41 @@
+fields:
+  source_text: "document_content"
+  gold_summary: "expected_summary"
+  model_summary: "agented_summary"
+
+  # traceability / joins
+  doc_title: "document_title"
+  link: "link"
+  author: "metadata.author"
+  sector: "metadata.sector"
+  report_date: "metadata.date"
+  uid: "uid"
+  write_id: "write_id"
+  export_timestamp: "export_timestamp"
+  notes: "notes"
+
+# optional CSV mapping write_id -> persona_id (string)
+persona_assignments_csv: "data/persona_assignments.csv"
+
+# persona corpora for style centroids
+personas:
+  formal_analyst: "data/personas/formal_analyst.txt"
+  enthusiast: "data/personas/enthusiast.txt"
+  journalist: "data/personas/journalist.txt"
+
+content:
+  use_rouge: true
+  rouge_variant: "rougeLsum"
+  use_bertscore: true
+  bertscore_model: "roberta-large"
+  # BLEURT is optional - requires TensorFlow and large checkpoint download (~300MB-1GB)
+  # Run setup_bleurt.py to download checkpoint if needed
+  # Note: May have compatibility issues on some systems (especially macOS with certain TensorFlow versions)
+  use_bleurt: false
+  bleurt_checkpoint: "bleurt_checkpoints/BLEURT-20-D3"
+
+style:
+  use_stylometric_similarity: true
+  use_persona_classifier: false
+  embedding_model: "all-MiniLM-L6-v2"
+  rejection_threshold: 0.55
