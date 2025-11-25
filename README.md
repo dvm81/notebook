@@ -1,242 +1,226 @@
-# Persona Summarization Evaluation System
+# Summary Evaluation System
 
-A comprehensive evaluation framework for assessing persona-based summarization systems. This tool evaluates summaries on two key dimensions:
+Simple evaluation system for financial/business summaries. Works directly with individual JSON files - no configuration needed.
 
-1. **Content Quality**: ROUGE, BERTScore, and BLEURT metrics
-2. **Style/Persona Fidelity**: Stylometric similarity to persona writing styles
-
-## Features
-
-- **Content Metrics**:
-  - ROUGE-1, ROUGE-2, ROUGE-Lsum (recall and F1)
-  - BERTScore F1 (with baseline rescaling)
-  - BLEURT scores
-  - Compression ratio analysis
-
-- **Style Metrics**:
-  - Stylometric feature extraction (function words, sentence length, punctuation patterns, etc.)
-  - Persona-specific centroid matching
-  - Jensen-Shannon divergence-based similarity
-
-- **Outputs**:
-  - Per-item metrics CSV
-  - Corpus-level aggregate statistics (JSON)
-  - Markdown report with analysis and rankings
-
-## Installation
+## Quick Start
 
 ```bash
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# Install dependencies
+# 1. Install dependencies
 pip install -r requirements.txt
-
-# Download NLTK data
 python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab')"
+
+# 2. Add your JSON files to data/
+# Each file should contain one article with generated summary
+
+# 3. Run evaluation
+python -m src.eval_runner
+
+# 4. Check results
+cat outputs/per_item_metrics.csv
 ```
 
 ## Data Format
 
-### Input JSONL (`data/input.jsonl`)
-
-Each line should be a JSON object with the following schema:
+Put individual JSON files in the `data/` directory. Each file should have:
 
 ```json
 {
   "link": "https://...",
-  "document_title": "string",
-  "document_content": "long source text",
+  "document_title": "Article Title",
+  "document_content": "Full article text...",
   "metadata": {
-    "author": "string",
-    "sector": "string",
-    "date": "YYYY-MM-DD"
+    "author": "Analyst Name",
+    "sector": "Technology",
+    "region": "North America",
+    "date": "2025-11-24",
+    "wire_id": "unique_id"
   },
-  "uid": "string",
-  "write_id": "string",
-  "notes": [],
-  "expected_summary": "gold/reference summary",
-  "agented_summary": "model-generated summary to evaluate",
-  "export_timestamp": "ISO8601"
+  "expected_summary": "Reference summary...",
+  "generated_summary": "AI-generated summary to evaluate...",
+  "prompt_type": "Morning Summary Stock",
+  "model_used": "gpt-4o",
+  "export_timestamp": "2025-11-24T16:23:40.119022"
 }
 ```
 
-### Persona Assignments (`data/persona_assignments.csv`)
+## What It Evaluates
 
-CSV file mapping summaries to personas:
+### Content Quality
+- **ROUGE scores** (1, 2, L) - word/phrase overlap with reference
+- **BERTScore** - semantic similarity using roberta-large
+- **Compression ratio** - summary length vs source
 
-```csv
-write_id,persona_id
-write-001,alex
-write-002,priya
+### Style Fidelity
+- **10 stylometric features** - writing style analysis
+- **Persona matching** - similarity to reference writing styles
+- Automatically infers persona from:
+  - `prompt_type` (e.g., "Research Note" → formal_analyst)
+  - `author` role (e.g., "PhD, Economist" → formal_analyst)
+  - Default: journalist style
+
+### Personas
+
+Three built-in writing styles:
+- **formal_analyst** - Analytical, data-driven, formal language
+- **journalist** - Clear, concise, news-style reporting
+- **enthusiast** - Energetic, engaging, conversational
+
+Add samples in `data/personas/*.txt` to customize.
+
+## Outputs
+
+After running evaluation:
+
+```
+outputs/
+├── per_item_metrics.csv      # Detailed metrics for each summary
+├── corpus_aggregates.json    # Statistics by persona, sector, model
+└── persona_centroids.json    # Cached style profiles
 ```
 
-### Persona Corpora (`data/personas/*.txt`)
+### Per-Item Metrics CSV
 
-Text files containing 3-10 writing samples for each persona, separated by double newlines:
+Columns include:
+- Identifiers: file, document_title, author, sector, date, wire_id
+- Model info: prompt_type, model_used, persona
+- ROUGE: rouge1_f, rouge2_f, rougeLsum_f (F1 scores)
+- BERTScore: bertscore_f1
+- Style: style_similarity
+- Composite: content_quality (weighted ROUGE + BERTScore)
+- **Overall: overall_quality (70% content + 30% style)**
 
-```
-Sample 1 text here...
+### Aggregates JSON
 
-Sample 2 text here...
+Statistics grouped by:
+- Overall (mean, median, std, min, max)
+- By persona
+- By sector
+- By model
 
-Sample 3 text here...
-```
-
-## Configuration
-
-Edit `config.yaml` to customize:
-
-- Field mappings for your JSON schema
-- Paths to persona files
-- Which metrics to enable/disable
-- Model checkpoints (BERTScore, BLEURT)
-
-## Usage
-
-### Interactive Notebook (Recommended for Learning)
-
-Explore the evaluation metrics interactively with detailed explanations:
+## Command Line Options
 
 ```bash
-jupyter notebook evaluation_demo.ipynb
-```
-
-See [NOTEBOOK_GUIDE.md](NOTEBOOK_GUIDE.md) for details.
-
-### Run Complete Evaluation (Command Line)
-
-```bash
-python -m src.eval_runner --config config.yaml --data data/input.jsonl --out outputs/per_item_metrics.csv
-```
-
-This will:
-1. Load configuration and persona assignments
-2. Build persona stylometric centroids
-3. Process each record and calculate all metrics
-4. Save per-item metrics to CSV
-5. Generate aggregate statistics (JSON)
-6. Print summary to console
-
-### Generate Report
-
-```bash
-python -m src.report --metrics outputs/per_item_metrics.csv --out outputs/report.md
-```
-
-This creates a markdown report with:
-- Overall statistics tables
-- Per-persona breakdowns
-- Top/bottom performing summaries
-- Summary insights
-
-## Output Files
-
-After running the evaluation, you'll find:
-
-- `outputs/per_item_metrics.csv`: All metrics for each evaluated summary
-- `outputs/corpus_aggregates.json`: Mean, median, std dev for each metric
-- `outputs/persona_centroids.json`: Cached stylometric centroids
-- `outputs/report.md`: Human-readable markdown report
-
-## Metrics Explanation
-
-### Content Quality Score
-
-Composite score calculated as:
-```
-content_quality = 0.4 * rougeLsum_f + 0.3 * bertscore_f1 + 0.3 * bleurt_normalized
-```
-
-### Style Similarity
-
-Measures how closely the generated summary matches the target persona's writing style using:
-- Function word frequencies
-- Average sentence length
-- Type-token ratio (vocabulary diversity)
-- Punctuation patterns
-- Pronoun usage
-- Flesch-Kincaid grade level
-- Average word length
-
-Similarity is computed as `1 - JensenShannon_divergence` between feature distributions.
-
-## Example Workflow
-
-```bash
-# 1. Set up environment
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab')"
-
-# 2. Prepare your data
-# - Create data/input.jsonl with your summaries
-# - Create data/persona_assignments.csv
-# - Add persona writing samples to data/personas/
-
-# 3. Run evaluation
-python -m src.eval_runner --config config.yaml --data data/input.jsonl
-
-# 4. Generate report
-python -m src.report
-
-# 5. View results
-cat outputs/report.md
-```
-
-## Sample Data
-
-The repository includes sample data for testing:
-- 3 example summaries in `data/input.jsonl`
-- 2 personas (alex, priya) with writing samples
-- Persona assignments mapping summaries to personas
-
-Run the evaluation on sample data to verify installation:
-
-```bash
+# Basic usage
 python -m src.eval_runner
-python -m src.report
+
+# Specify data directory
+python -m src.eval_runner --data-dir /path/to/json/files
+
+# Disable BERTScore (faster)
+python -m src.eval_runner --no-bertscore
+
+# Change BERTScore model
+python -m src.eval_runner --bertscore-model distilbert-base-uncased
+
+# Enable BLEURT (requires setup)
+python -m src.eval_runner --use-bleurt
 ```
 
-## Troubleshooting
+## Example Results
 
-### BLEURT Installation Issues
+```
+EVALUATION SUMMARY
+==================
+Total items evaluated: 9
 
-BLEURT requires TensorFlow and can be tricky to install. If you encounter issues:
+Overall Metrics (mean):
+  ROUGE-Lsum F1:     0.5469
+  BERTScore F1:      0.4882
+  Style Similarity:  0.8484
+  Content Quality:   0.5152
+  Overall Quality:   0.6152
+                     (70% content + 30% style)
 
-1. Try installing TensorFlow separately first:
-   ```bash
-   pip install tensorflow>=2.0.0
-   ```
+By Persona:
+  formal_analyst:  9 items, overall=0.615, content=0.515, style=0.848
+```
 
-2. If BLEURT still fails, you can disable it in `config.yaml`:
-   ```yaml
-   content:
-     use_bleurt: false
-   ```
+## How It Works
 
-### Memory Issues with BERTScore
+1. **Loads JSON files** from `data/` directory
+2. **Infers persona** from metadata (prompt_type, author)
+3. **Calculates metrics**:
+   - ROUGE: n-gram overlap
+   - BERTScore: semantic similarity
+   - Style: feature extraction + Jensen-Shannon divergence
+4. **Saves results** to CSV and JSON
 
-For large datasets, BERTScore can consume significant memory. Consider:
+## Project Structure
 
-- Processing in smaller batches
-- Using a smaller model: change `roberta-large` to `roberta-base` in config.yaml
-- Disabling if necessary: set `use_bertscore: false`
+```
+rogue/
+├── data/                      # Your JSON files go here
+│   ├── article1.json
+│   ├── article2.json
+│   └── personas/              # Style reference samples
+│       ├── formal_analyst.txt
+│       ├── journalist.txt
+│       └── enthusiast.txt
+├── src/
+│   ├── io_utils.py           # Load JSON files
+│   ├── content_metrics.py    # ROUGE, BERTScore
+│   ├── style_features.py     # Stylometric analysis
+│   ├── text_utils.py         # Text processing
+│   └── eval_runner.py        # Main evaluation
+├── outputs/                   # Results (auto-generated)
+└── requirements.txt
+```
+
+## Customization
+
+### Add Your Own Persona
+
+1. Create `data/personas/your_persona.txt`
+2. Add 5-10 writing samples (separated by blank lines)
+3. Update persona inference in `src/io_utils.py:infer_persona()`
+
+### Adjust Metrics
+
+Edit `src/eval_runner.py` main():
+- Disable BERTScore: `--no-bertscore`
+- Change model: `--bertscore-model distilbert-base-uncased`
+- Enable BLEURT: `--use-bleurt` (requires download)
+
+## Dependencies
+
+Core:
+- rouge-score - ROUGE metrics
+- bert-score - Semantic similarity
+- transformers, torch - Model backends
+- pandas, numpy - Data processing
+- nltk, scipy - Text analysis
+
+Optional:
+- bleurt - Human-correlated metric (large download)
+- matplotlib - Visualization
+
+## Tips
+
+### Good Summary Metrics
+- **Overall Quality > 0.6**: Good overall summary (combined metric)
+- **Overall Quality > 0.7**: Excellent overall summary
+- ROUGE-Lsum F1 > 0.6: Good content coverage
+- BERTScore F1 > 0.85: Strong semantic match
+- Style similarity > 0.7: Good persona match
+- Content quality > 0.6: Good content (weighted ROUGE + BERTScore)
+
+### Troubleshooting
+
+**No JSON files found:**
+- Check files are in `data/` directory
+- Ensure files end with `.json`
+- Verify JSON is valid
+
+**Persona mismatch:**
+- Check `prompt_type` and `author` fields
+- Update `infer_persona()` logic in `src/io_utils.py`
+- Add more samples to `data/personas/`
+
+**Slow evaluation:**
+- Use smaller BERTScore model: `--bertscore-model distilbert-base-uncased`
+- Disable BERTScore: `--no-bertscore`
+- Process fewer files
 
 ## License
 
 MIT
-
-## Citation
-
-If you use this evaluation framework in your research, please cite:
-
-```bibtex
-@software{persona_eval_2024,
-  title={Persona Summarization Evaluation System},
-  year={2024},
-  author={Your Name},
-  version={1.0.0}
-}
-```

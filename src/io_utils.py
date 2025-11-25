@@ -1,122 +1,137 @@
 """
-I/O utilities for loading data and extracting fields based on config.
+I/O utilities for loading data from individual JSON files.
 """
 
 import json
-import csv
 from pathlib import Path
-from typing import Iterator, Dict, Any, Optional, Tuple
+from typing import Iterator, Dict, Any, List
 
 
-def load_jsonl(path: str) -> Iterator[Dict[str, Any]]:
+def load_json_files(data_dir: str = "data") -> Iterator[Dict[str, Any]]:
     """
-    Load JSONL file and yield records.
+    Load all JSON files from a directory.
 
     Args:
-        path: Path to JSONL file
+        data_dir: Directory containing JSON files
 
     Yields:
-        Dictionary records from the JSONL file
+        Dictionary records from JSON files
     """
-    with open(path, 'r', encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                yield json.loads(line)
+    data_path = Path(data_dir)
+
+    if not data_path.exists():
+        raise FileNotFoundError(f"Data directory not found: {data_dir}")
+
+    json_files = sorted(data_path.glob("*.json"))
+
+    if not json_files:
+        raise FileNotFoundError(f"No JSON files found in {data_dir}")
+
+    for json_file in json_files:
+        with open(json_file, 'r', encoding='utf-8') as f:
+            try:
+                data = json.load(f)
+                # Add filename for tracking
+                data['_source_file'] = json_file.name
+                yield data
+            except json.JSONDecodeError as e:
+                print(f"Warning: Failed to parse {json_file.name}: {e}")
+                continue
 
 
-def get_field(obj: Dict[str, Any], dotted_path: str, default: Any = None) -> Any:
+def extract_fields(record: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Get nested field from object using dotted path notation.
+    Extract all relevant fields from a record.
 
     Args:
-        obj: Dictionary object
-        dotted_path: Path to field (e.g., "metadata.author")
-        default: Default value if field not found
+        record: JSON record
 
     Returns:
-        Value at the specified path or default
-
-    Examples:
-        >>> obj = {"metadata": {"author": "John"}}
-        >>> get_field(obj, "metadata.author")
-        'John'
-        >>> get_field(obj, "metadata.missing", "N/A")
-        'N/A'
+        Dictionary with extracted fields
     """
-    keys = dotted_path.split('.')
-    current = obj
+    # Extract metadata
+    metadata = record.get('metadata', {})
 
-    for key in keys:
-        if isinstance(current, dict) and key in current:
-            current = current[key]
-        else:
-            return default
+    return {
+        # Core content
+        'document_content': record.get('document_content', ''),
+        'expected_summary': record.get('expected_summary', ''),
+        'generated_summary': record.get('generated_summary', ''),
 
-    return current
+        # Metadata
+        'document_title': record.get('document_title', ''),
+        'link': record.get('link', ''),
+        'author': metadata.get('author', ''),
+        'sector': metadata.get('sector', ''),
+        'region': metadata.get('region', ''),
+        'date': metadata.get('date', ''),
+        'wire_id': metadata.get('wire_id', ''),
+        'subject_codes': metadata.get('subject_codes', []),
 
+        # Model info
+        'prompt_type': record.get('prompt_type', ''),
+        'model_used': record.get('model_used', ''),
+        'export_timestamp': record.get('export_timestamp', ''),
 
-def load_persona_assignments(csv_path: str) -> Dict[str, str]:
-    """
-    Load persona assignments from CSV file.
-
-    Args:
-        csv_path: Path to CSV file with columns: write_id,persona_id
-
-    Returns:
-        Dictionary mapping write_id to persona_id
-    """
-    if not Path(csv_path).exists():
-        return {}
-
-    assignments = {}
-    with open(csv_path, 'r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            write_id = row.get('write_id', '').strip()
-            persona_id = row.get('persona_id', '').strip()
-            if write_id and persona_id:
-                assignments[write_id] = persona_id
-
-    return assignments
-
-
-def record_to_example(
-    rec: Dict[str, Any],
-    cfg: Dict[str, Any],
-    persona_map: Dict[str, str]
-) -> Tuple[str, str, str, Optional[str], Dict[str, Any]]:
-    """
-    Extract fields from record based on config.
-
-    Args:
-        rec: Record from JSONL
-        cfg: Configuration dictionary with field mappings
-        persona_map: Dictionary mapping write_id to persona_id
-
-    Returns:
-        Tuple of (source_text, gold_summary, model_summary, persona_id, trace_info)
-    """
-    fields = cfg.get('fields', {})
-
-    source_text = get_field(rec, fields.get('source_text', 'document_content'), '')
-    gold_summary = get_field(rec, fields.get('gold_summary', 'expected_summary'), '')
-    model_summary = get_field(rec, fields.get('model_summary', 'agented_summary'), '')
-
-    write_id = get_field(rec, fields.get('write_id', 'write_id'), '')
-    persona_id = persona_map.get(write_id)
-
-    # Extract trace information
-    trace_info = {
-        'write_id': write_id,
-        'uid': get_field(rec, fields.get('uid', 'uid'), ''),
-        'document_title': get_field(rec, fields.get('doc_title', 'document_title'), ''),
-        'link': get_field(rec, fields.get('link', 'link'), ''),
-        'author': get_field(rec, fields.get('author', 'metadata.author'), ''),
-        'sector': get_field(rec, fields.get('sector', 'metadata.sector'), ''),
-        'report_date': get_field(rec, fields.get('report_date', 'metadata.date'), ''),
-        'export_timestamp': get_field(rec, fields.get('export_timestamp', 'export_timestamp'), ''),
-        'notes': get_field(rec, fields.get('notes', 'notes'), [])
+        # Tracking
+        '_source_file': record.get('_source_file', ''),
     }
 
-    return source_text, gold_summary, model_summary, persona_id, trace_info
+
+def infer_persona(record: Dict[str, Any]) -> str:
+    """
+    Infer persona from record metadata.
+
+    Uses prompt_type, author role, and sector to determine writing style.
+
+    Args:
+        record: JSON record
+
+    Returns:
+        Persona ID (formal_analyst, journalist, or enthusiast)
+    """
+    prompt_type = record.get('prompt_type', '').lower()
+    author = record.get('author', '').lower()
+    sector = record.get('sector', '').lower()
+
+    # Formal analyst style: research notes, detailed analysis
+    if any(keyword in prompt_type for keyword in ['research', 'analyst', 'note']):
+        return 'formal_analyst'
+
+    if any(keyword in author for keyword in ['analyst', 'economist', 'strategist', 'phd', 'cfa']):
+        return 'formal_analyst'
+
+    # Journalist style: morning summaries, news-style
+    if any(keyword in prompt_type for keyword in ['morning', 'summary', 'brief', 'update']):
+        return 'journalist'
+
+    # Enthusiast style: quick takes, highlights
+    if any(keyword in prompt_type for keyword in ['quick', 'highlight', 'takeaway']):
+        return 'enthusiast'
+
+    # Default to journalist for financial/business content
+    return 'journalist'
+
+
+def load_all_records(data_dir: str = "data") -> List[Dict[str, Any]]:
+    """
+    Load and process all JSON files from directory.
+
+    Args:
+        data_dir: Directory containing JSON files
+
+    Returns:
+        List of processed records with extracted fields and inferred personas
+    """
+    records = []
+
+    for raw_record in load_json_files(data_dir):
+        # Extract all fields
+        extracted = extract_fields(raw_record)
+
+        # Infer persona
+        extracted['persona'] = infer_persona(extracted)
+
+        records.append(extracted)
+
+    return records
