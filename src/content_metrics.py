@@ -3,6 +3,7 @@ Content quality metrics: ROUGE, BERTScore, and BLEURT.
 """
 
 from typing import Dict, Any, Optional
+from pathlib import Path
 from rouge_score import rouge_scorer
 import bert_score
 from src.text_utils import count_tokens
@@ -18,6 +19,8 @@ class ContentMetricsCalculator:
         Args:
             config: Configuration dictionary with content metrics settings
         """
+        import os
+
         self.config = config
         self.content_config = config.get('content', {})
 
@@ -28,8 +31,15 @@ class ContentMetricsCalculator:
         else:
             self.rouge_scorer = None
 
-        # BERTScore model
+        # BERTScore model configuration
         self.bertscore_model = self.content_config.get('bertscore_model', 'roberta-large')
+
+        # Set up local model path for transformers if it exists
+        local_model_path = Path("roberta-large")
+        if local_model_path.exists() and (local_model_path / "config.json").exists():
+            # Point transformers to use our local directory as cache
+            os.environ['HF_HOME'] = str(local_model_path.parent.absolute())
+            print(f"Using local RoBERTa-large model from: {local_model_path.absolute()}")
 
         # BLEURT checkpoint
         self.bleurt_checkpoint = self.content_config.get('bleurt_checkpoint', 'BLEURT-20-D12')
@@ -81,6 +91,9 @@ class ContentMetricsCalculator:
     ) -> Optional[float]:
         """
         Calculate BERTScore.
+
+        Will use local RoBERTa-large model if roberta-large/ directory exists,
+        otherwise downloads from HuggingFace.
 
         Args:
             reference: Gold summary

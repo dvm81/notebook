@@ -189,10 +189,28 @@ Core:
 - transformers, torch - Model backends
 - pandas, numpy - Data processing
 - nltk, scipy - Text analysis
+- huggingface_hub - Model downloads
 
 Optional:
 - bleurt - Human-correlated metric (large download)
 - matplotlib - Visualization
+
+## Local Model Setup (Optional)
+
+Speed up evaluation by downloading RoBERTa-large once to local disk:
+
+```bash
+# Download model files (~1.4GB) to roberta-large/ directory
+python setup_roberta.py
+
+# Verify it works
+python test_local_roberta.py
+
+# Run evaluation (will use local model automatically)
+python -m src.eval_runner
+```
+
+See [ROBERTA_LOCAL_SETUP.md](ROBERTA_LOCAL_SETUP.md) for details.
 
 ## Tips
 

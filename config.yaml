@@ -27,6 +27,9 @@ content:
   use_rouge: true
   rouge_variant: "rougeLsum"
   use_bertscore: true
+  # BERTScore model - will automatically use local roberta-large/ directory if it exists
+  # To download model files locally: python setup_roberta.py
+  # This avoids repeated downloads and speeds up evaluation
   bertscore_model: "roberta-large"
   # BLEURT is optional - requires TensorFlow and large checkpoint download (~300MB-1GB)
   # Run setup_bleurt.py to download checkpoint if needed
