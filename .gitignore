@@ -44,6 +44,7 @@ Thumbs.db
 # Large model files and checkpoints
 bleurt_checkpoints/
 roberta-large/
+model_cache/
 *.zip
 *.tar.gz
 *.ckpt

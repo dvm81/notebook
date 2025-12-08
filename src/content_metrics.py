@@ -34,12 +34,20 @@ class ContentMetricsCalculator:
         # BERTScore model configuration
         self.bertscore_model = self.content_config.get('bertscore_model', 'roberta-large')
 
-        # Set up local model path for transformers if it exists
-        local_model_path = Path("roberta-large")
-        if local_model_path.exists() and (local_model_path / "config.json").exists():
-            # Point transformers to use our local directory as cache
-            os.environ['HF_HOME'] = str(local_model_path.parent.absolute())
-            print(f"Using local RoBERTa-large model from: {local_model_path.absolute()}")
+        # Set up local model cache for transformers if it exists
+        model_cache_dir = Path("model_cache")
+        roberta_legacy_dir = Path("roberta-large")
+
+        if model_cache_dir.exists() and list(model_cache_dir.glob("**/config.json")):
+            # Use new model_cache directory (from setup_roberta_v2.py)
+            os.environ['TRANSFORMERS_CACHE'] = str(model_cache_dir.absolute())
+            os.environ['HF_HOME'] = str(model_cache_dir.absolute())
+            print(f"Using local RoBERTa model cache from: {model_cache_dir.absolute()}")
+        elif roberta_legacy_dir.exists() and (roberta_legacy_dir / "config.json").exists():
+            # Use legacy roberta-large directory (from old setup_roberta.py)
+            os.environ['TRANSFORMERS_CACHE'] = str(roberta_legacy_dir.absolute())
+            os.environ['HF_HOME'] = str(roberta_legacy_dir.parent.absolute())
+            print(f"Using local RoBERTa-large model from: {roberta_legacy_dir.absolute()}")
 
         # BLEURT checkpoint
         self.bleurt_checkpoint = self.content_config.get('bleurt_checkpoint', 'BLEURT-20-D12')
