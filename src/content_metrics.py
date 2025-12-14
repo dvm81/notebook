@@ -84,8 +84,8 @@ class ContentMetricsCalculator:
         try:
             from transformers import AutoModel, AutoTokenizer
 
-            # Try to load from local directory first
-            model_dir = Path("roberta-large")
+            # Try to load from local directory first (using configured model name)
+            model_dir = Path(self.bertscore_model)
 
             if model_dir.exists() and (model_dir / "config.json").exists():
                 print(f"Loading BERTScore model from local directory: {model_dir}")
